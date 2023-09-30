@@ -15,24 +15,28 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--scene", type = str, default = "lego")
 parser.add_argument("--config", type = str, default = "base")
 parser.add_argument("--max_steps", type = int, default = 25000)
-
-
-# HyperParameters
-config_path = "./configs/base.json"
-scene_name = "lego"
-max_steps = 5000
-batch_size = 2048
-
-# Consts
-near = 0.6
-far = 2.0
-ngp_steps = 1024
-step_length = math.sqrt(3) / ngp_steps
+parser.add_argument("--load_snapshot", "--load", type = str, default = "None")
+parser.add_argument("--batch", "--batch_size", type = int, default = 2048)
+parser.add_argument("--near_plane", "--near", type = float, default = 0.6)
+parser.add_argument("--far_plane", "--far", type = float, default = 2.0)
+parser.add_argument("--ray_marching_steps", type = int, default = 1024)
 
 if __name__ == "__main__":
+    args = parser.parse_args()
+    config_path = f"./configs/{args.config}.json"
+    scene_name = args.scene
+    max_steps = args.max_steps
+    batch_size = args.batch
+    near = args.near_plane
+    far = args.far_plane
+    ngp_steps = args.ray_marching_steps
+    step_length = math.sqrt(3) / ngp_steps
+
+    
     with open(config_path, "r") as f:
         config = json.load(f)
-    # Camera Parameters
+        
+    # Evaluate Parameters
     with open(f"./data/nerf_synthetic/{scene_name}/transforms_test.json", "r") as f:
         meta = json.load(f)
     m_Camera_Angle_X = float(meta["camera_angle_x"])
@@ -41,12 +45,15 @@ if __name__ == "__main__":
     ref_raw = cv.imread(f"./data/nerf_synthetic/{scene_name}/test/r_0.png", cv.IMREAD_UNCHANGED) / 255.
     ref_raw = ref_raw[..., :3] * ref_raw[..., 3:]
     ref = np.array(ref_raw, dtype=np.float32)
+    
+    
     # Datasets
     dataset = NeRFSynthetic(f"./data/nerf_synthetic/{scene_name}")
     
     # Initialize models
     ngp = InstantNGP(config).to("cuda")
-    #ngp.load_snapshot("./snapshots/lego.msgpack")
+    if args.load_snapshot != "None":
+        ngp.load_snapshot(args.load_snapshot)
     weight_decay = (
         1e-5 if scene_name in ["materials", "ficus", "drums"] else 1e-6
     )
