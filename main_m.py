@@ -8,7 +8,7 @@ from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 import argparse
 
 from Dataset import NeRFSynthetic
-from NGP import InstantNGP
+from NGP_m import InstantNGP
 from utils import Camera, render_image
 
 parser = argparse.ArgumentParser()
