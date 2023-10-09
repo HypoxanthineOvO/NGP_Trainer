@@ -8,7 +8,7 @@ from skimage.metrics import peak_signal_noise_ratio as compute_psnr
 import argparse
 
 from Dataset import NeRFSynthetic
-from NGP import InstantNGP
+from NGP_mq import InstantNGP
 from utils import Camera, render_image
 
 parser = argparse.ArgumentParser()
@@ -16,17 +16,20 @@ parser.add_argument("--scene", type = str, default = "lego")
 parser.add_argument("--config", type = str, default = "base")
 parser.add_argument("--max_steps", type = int, default = 25000)
 parser.add_argument("--load_snapshot", "--load", type = str, default = "None")
-parser.add_argument("--batch", "--batch_size", type = int, default = 8192)
+parser.add_argument("--sample_batch", "--batch_size", type = int, default = 4096)
+parser.add_argument("--render_batch", type = int, default = 8192)
 parser.add_argument("--near_plane", "--near", type = float, default = 0.6)
 parser.add_argument("--far_plane", "--far", type = float, default = 2.0)
 parser.add_argument("--ray_marching_steps", type = int, default = 1024)
+parser.add_argument("--bit", type = int, default = 16)
 
 if __name__ == "__main__":
     args = parser.parse_args()
     config_path = f"./configs/{args.config}.json"
     scene_name = args.scene
     max_steps = args.max_steps
-    batch_size = args.batch
+    sample_batch = args.sample_batch
+    render_batch = args.render_batch
     near = args.near_plane
     far = args.far_plane
     ngp_steps = args.ray_marching_steps
@@ -51,7 +54,7 @@ if __name__ == "__main__":
     dataset = NeRFSynthetic(f"./data/nerf_synthetic/{scene_name}")
     
     # Initialize models
-    ngp: InstantNGP = InstantNGP(config).to("cuda")
+    ngp: InstantNGP = InstantNGP(config, args.bit, args.bit).to("cuda")
     if args.load_snapshot != "None":
         ngp.load_snapshot(args.load_snapshot)
     weight_decay = (
@@ -79,7 +82,7 @@ if __name__ == "__main__":
             return density * step_length
         ngp.grid.update_every_n_steps(step = step, occ_eval_fn = occ_eval_fn, occ_thre = 1e-2)
         
-        pixels, rays_o, rays_d = dataset.sample(batch_size)
+        pixels, rays_o, rays_d = dataset.sample(sample_batch)
         pixels = pixels.cuda()
         color = render_image(
             ngp, ngp.grid, rays_o, rays_d
@@ -93,14 +96,14 @@ if __name__ == "__main__":
         # Eval
         if step % 1000 == 0:
             total_color = np.zeros([800 * 800, 3], dtype = np.float32)
-            val_batch = 100 * 100
-            for i in range(0, 800*800, val_batch):
-                rays_o_total = torch.tensor(camera.rays_o[i: i+val_batch], dtype = torch.float32)
-                rays_d_total = torch.tensor(camera.rays_d[i: i+val_batch], dtype = torch.float32)
+            for i in range(0, 800*800, render_batch):
+                #print(f"I = {i}")
+                rays_o_total = torch.tensor(camera.rays_o[i: i+render_batch], dtype = torch.float32)
+                rays_d_total = torch.tensor(camera.rays_d[i: i+render_batch], dtype = torch.float32)
                 color = render_image(
                     ngp, ngp.grid, rays_o_total, rays_d_total,
                 ).cpu().detach().numpy()
-                total_color[i: i+val_batch] = color
+                total_color[i: i+render_batch] = color
                 torch.cuda.empty_cache()
             image = np.clip(total_color[..., [2, 1, 0]].reshape(800, 800, 3), 0, 1)
 
@@ -108,4 +111,4 @@ if __name__ == "__main__":
             psnr = compute_psnr(image, ref)
             tqdm.write(f"Step {step}, PSNR = {round(psnr.item(), 4)}")
         torch.cuda.empty_cache()
-    ngp.save_snapshot(path = f"./{scene_name}.msgpack", load_path = "./snapshots/lego.msgpack")
+    ngp.save_snapshot(path = f"./{scene_name}_Q_{args.bit}.msgpack", load_path = "./snapshots/lego.msgpack")

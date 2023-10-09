@@ -55,7 +55,7 @@ class InstantNGP(torch.nn.Module):
         init_params_grid = {
             "resolution": torch.tensor([128, 128, 128], dtype = torch.int32),
             "aabbs": torch.tensor([[0, 0, 0, 1, 1, 1]]),
-            "occs": torch.rand(128 ** 3, dtype = torch.float32) / 250,
+            "occs": torch.abs(torch.randn(128 ** 3, dtype = torch.float32)) / 100,
             "binaries": torch.zeros([1, 128, 128, 128], dtype = torch.bool)
         }
         self.grid.load_state_dict(init_params_grid)

@@ -25,8 +25,9 @@ def Show_Diff(name:str):
 
 
 if __name__ == "__main__":
-    # psnr = PSNR("./Test_lego_0_ACC.png", "lego")
-    # print(psnr)
+    psnr = PSNR("lego.png", "lego")
+    print(psnr)
+    exit()
     psnrs = []
     for scene in scenes:
         psnr = PSNR(f"./Test_{scene}_0_ACC.png", scene)

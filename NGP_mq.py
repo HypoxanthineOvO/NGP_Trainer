@@ -1,14 +1,18 @@
 import numpy as np
 import torch
-import tinycudann as tcnn
+
+import Quantize.QHash as Hash
+import Quantize.QSH as SH
+import Quantize.QNetWorks as Network
+
 import msgpack
 import nerfacc
 import math
 from utils import inv_morton_naive, morton_naive
-
+from Quantize.QuantUtils import Linear_Quantize
 
 class InstantNGP(torch.nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, WeightBits = 12, FeatureBits = 12):
         super().__init__()
         self.config = config
         
@@ -17,24 +21,39 @@ class InstantNGP(torch.nn.Module):
         self.far = 2.0
         self.steps = 1024
         self.step_length = math.sqrt(3) / self.steps
+        self.WeightBits = 12
+        self.FeatureBits = 12
         
         # Initialize models
-        self.hash: torch.nn.Module = tcnn.NetworkWithInputEncoding(
+        hashgrid = Hash.QHashEncoding(
             n_input_dims = 3,
-            n_output_dims = 16,
             encoding_config = config["encoding"],
-            network_config = config["network"]
+            Weight_Bits = WeightBits,
+            Feature_Bits = FeatureBits
         ).to("cuda")
-        self.sh: torch.nn.Module = tcnn.Encoding(
+        sig_net = Network.QMLP(
+            n_input_dims = 32,
+            n_output_dims = 16,
+            network_config = config["network"],
+            Weight_Bits = WeightBits,
+            Feature_Bits = FeatureBits
+        ).to("cuda")
+        shenc = SH.QSHEncoding(
             n_input_dims = 3,
             encoding_config = config["dir_encoding"],
-            dtype = torch.float32
+            FeatureBits = FeatureBits
         ).to("cuda")
-        self.mlp: torch.nn.Module = tcnn.Network(
+        rgb_net = Network.QMLP(
             n_input_dims = 32,
             n_output_dims = 3,
-            network_config = config["rgb_network"]
+            network_config = config["rgb_network"],
+            Weight_Bits = WeightBits,
+            Feature_Bits = FeatureBits
         ).to("cuda")
+        self.hash_g: torch.nn.Module = hashgrid
+        self.hash_n: torch.nn.Module = sig_net
+        self.sh: torch.nn.Module = shenc
+        self.mlp: torch.nn.Module = rgb_net
         self.grid: torch.nn.Module = nerfacc.OccGridEstimator(
             roi_aabb = [0, 0, 0, 1, 1, 1],
             resolution = 128, levels = 1
@@ -81,9 +100,9 @@ class InstantNGP(torch.nn.Module):
         grid[x * 128 * 128 + y * 128 + z] = grid_raw
         grid_3d = torch.reshape(grid > 0.01, [1, 128, 128, 128]).type(torch.bool)
         
-        params_hash = torch.cat([params_hashnet, params_hashgrid])
-        self.hash.load_state_dict({"params": params_hash})
-        self.mlp.load_state_dict({"params": params_rgbnet})
+        self.hash_g.load_states(params_hashgrid)
+        self.hash_n.load_states(params_hashnet)
+        self.mlp.load_states(params_rgbnet)
         self.grid.load_state_dict({
             "resolution": torch.tensor([128, 128, 128], dtype = torch.int32),
             "aabbs": torch.tensor([[0, 0, 0, 1, 1, 1]]),
@@ -97,8 +116,23 @@ class InstantNGP(torch.nn.Module):
                 unpacker = msgpack.Unpacker(f, raw = False, max_buffer_size = 0)
                 snapshot = next(unpacker)
         # Parameters
-        params_hash = self.hash.state_dict()["params"].clone().cpu().detach()
-        params_rgbnet = self.mlp.state_dict()["params"].clone().cpu().detach()
+        hash_g_params_raw = []
+        for k, v in self.hash_g.state_dict().items():
+            hash_g_params_raw.append(v.reshape([-1,]))
+        params_hashgrid = torch.cat(hash_g_params_raw)
+        params_hashgrid = Linear_Quantize(params_hashgrid, self.WeightBits)
+        hash_n_params_raw = []
+        for k, v in self.hash_n.state_dict().items():
+            hash_n_params_raw.append(v.reshape([-1,]))
+        params_hashnet = torch.cat(hash_n_params_raw)
+        params_hashnet = Linear_Quantize(params_hashnet, self.WeightBits)
+        params_hash = torch.cat([params_hashnet, params_hashgrid], dim = -1).clone().cpu().detach()
+        rgbnet_params_raw = []
+        for k, v in self.mlp.state_dict().items():
+            rgbnet_params_raw.append(v.reshape([-1,]))
+        rgbnet_params_raw.append(torch.zeros([64 * 13], device = "cuda"))
+        params_rgbnet = torch.cat(rgbnet_params_raw).clone().cpu().detach()
+        params_rgbnet = Linear_Quantize(params_rgbnet, self.WeightBits)
         params_binary = torch.cat([
             params_hash[:(32 * 64 + 64 * 16)],
             params_rgbnet,
@@ -121,19 +155,22 @@ class InstantNGP(torch.nn.Module):
             f.write(msgpack.packb(snapshot))
     
     def get_alpha(self, x: torch.Tensor):
-        hash_features = self.hash(x)
+        hash_features_raw = self.hash_g(x)
+        hash_features = self.hash_n(hash_features_raw)
         alphas_raw = hash_features[..., 0]
         alphas = (1. - torch.exp(-torch.exp(alphas_raw.type(torch.float32)) * self.step_length))
         return alphas
 
     def get_density(self, x: torch.Tensor):
-        hash_features = self.hash(x)
+        hash_features_raw = self.hash_g(x)
+        hash_features = self.hash_n(hash_features_raw)
         alphas_raw = hash_features[..., 0]
         density = torch.exp(alphas_raw - 1)
         return density
 
     def get_rgb(self, x: torch.Tensor, dir: torch.Tensor):
-        hash_features = self.hash(x)
+        hash_features_raw = self.hash_g(x)
+        hash_features = self.hash_n(hash_features_raw)
         sh_features = self.sh((dir + 1) / 2)        
         features = torch.concat([hash_features, sh_features], dim = -1)
         rgbs_raw = self.mlp(features)

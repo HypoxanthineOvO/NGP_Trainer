@@ -16,7 +16,7 @@ parser.add_argument("--scene", type = str, default = "lego")
 parser.add_argument("--config", type = str, default = "base")
 parser.add_argument("--max_steps", type = int, default = 25000)
 parser.add_argument("--load_snapshot", "--load", type = str, default = "None")
-parser.add_argument("--batch", "--batch_size", type = int, default = 2048)
+parser.add_argument("--batch", "--batch_size", type = int, default = 8192)
 parser.add_argument("--near_plane", "--near", type = float, default = 0.6)
 parser.add_argument("--far_plane", "--far", type = float, default = 2.0)
 parser.add_argument("--ray_marching_steps", type = int, default = 1024)
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         # Eval
         if step % 1000 == 0:
             total_color = np.zeros([800 * 800, 3], dtype = np.float32)
-            val_batch = 100 * 100
+            val_batch = batch_size
             for i in range(0, 800*800, val_batch):
                 rays_o_total = torch.tensor(camera.rays_o[i: i+val_batch], dtype = torch.float32)
                 rays_d_total = torch.tensor(camera.rays_d[i: i+val_batch], dtype = torch.float32)
