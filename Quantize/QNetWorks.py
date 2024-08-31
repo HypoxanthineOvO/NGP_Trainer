@@ -1,6 +1,6 @@
 import torch
 from torch.nn import Module
-from .QuantUtils import Linear_Quantize
+from .QuantUtils import Quantize
 
 class QMLP(Module):
     def __init__(self, n_input_dims: int, n_output_dims: int, network_config: dict, Weight_Bits = 8, Feature_Bits = 8):
@@ -25,27 +25,26 @@ class QMLP(Module):
                 weight = states[:self.n_input_dims * self.n_neurons].reshape(
                     [self.n_neurons, self.n_input_dims]
                 )
-                state_dict[f"layers.{i}.weight"] = Linear_Quantize(weight, self.WeightBits)
+                state_dict[f"layers.{i}.weight"] = Quantize(weight, 4, 8)
                 states = states[self.n_input_dims * self.n_neurons:]
             elif (i == self.n_hidden_layers):
                 weight = states[:self.n_neurons * self.n_output_dims].reshape(
                     [self.n_output_dims, self.n_neurons]
                 )
-                state_dict[f"layers.{i}.weight"] = Linear_Quantize(weight, self.WeightBits)
+                state_dict[f"layers.{i}.weight"] = Quantize(weight, 4, 8)
                 states = states[self.n_neurons * self.n_output_dims:]
             else:
                 weight = states[:self.n_neurons * self.n_neurons].reshape(
                     [self.n_neurons, self.n_neurons]
                 )
-                state_dict[f"layers.{i}.weight"] = Linear_Quantize(weight, self.WeightBits)
+                state_dict[f"layers.{i}.weight"] = Quantize(weight, 4, 8)
                 states = states[self.n_neurons * self.n_neurons:]
         self.load_state_dict(state_dict)
         
     def forward(self, inputs: torch.Tensor):
-        x = Linear_Quantize(inputs, self.FeatureBits)
+        x = Quantize(inputs, 4, 8)
         for i, layer in enumerate(self.layers):
-            x = layer(x)
+            x = Quantize(layer(Quantize(x, 4, 8)), 4, 8)
             if(i < len(self.layers) - 1):
                 x = torch.nn.functional.relu(x)
-            x = Linear_Quantize(x, self.FeatureBits)
         return x

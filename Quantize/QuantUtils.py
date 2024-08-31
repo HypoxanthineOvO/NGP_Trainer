@@ -3,7 +3,15 @@ from torch.autograd import Variable
 import math
 import warnings
 
+########## Fixed-width Quantize ##########
+def Quantize(x: torch.Tensor, integral_length: int = 4, mantissa_length: int = 4):
+    left_bound, right_bound = -2 ** (integral_length - 1), 2 ** (integral_length - 1)
+    q_x = torch.clip(x, left_bound, right_bound)
+    q_x = torch.floor(q_x * (2 ** mantissa_length) + 0.5) / (2 ** mantissa_length)
+    out = (q_x - x).detach() + x
+    return out
 
+########## Linear Quantize ##########
 warnings.filterwarnings("ignore")
 
 def Get_int_Part(input, overflow_rate):
@@ -50,3 +58,17 @@ def Linear_Quantize(input: torch.Tensor, bits, ov=0.0):
     quant_t = Quantize_with_ScaleFactor(input, sf, bits)
     torch.cuda.empty_cache()
     return quant_t
+
+if __name__ == "__main__":
+    x = torch.rand(15) * 20 - 10
+    print(x)
+    y = Quantize(x)
+    print(y)
+    
+    x1 = torch.rand(5)
+    x2 = torch.rand(5)
+    
+    print(x1)
+    print(x2)
+    yout = Quantize(Quantize(x1) * Quantize(x2))
+    print(yout)

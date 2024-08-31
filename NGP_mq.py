@@ -60,14 +60,17 @@ class InstantNGP(torch.nn.Module):
         ).to("cuda")
         self.snapshot = None
         
-        # Initialize Density Grid
+        grid_1d = torch.abs(torch.randn(128 ** 3, dtype = torch.float32)) / 100
+        
+        grid_3d = torch.reshape((grid_1d > 0.01), [1, 128, 128, 128]).type(torch.bool)
         init_params_grid = {
             "resolution": torch.tensor([128, 128, 128], dtype = torch.int32),
             "aabbs": torch.tensor([[0, 0, 0, 1, 1, 1]]),
-            "occs": torch.abs(torch.randn(128 ** 3, dtype = torch.float32)) / 100,
-            "binaries": torch.zeros([1, 128, 128, 128], dtype = torch.bool)
+            "occs": grid_1d,
+            "binaries": grid_3d
         }
         self.grid.load_state_dict(init_params_grid)
+
 
     def load_snapshot(self, path: str):
         with open(path, 'rb') as f:

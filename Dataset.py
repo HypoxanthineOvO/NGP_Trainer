@@ -68,7 +68,7 @@ class NeRFSynthetic:
         return ref_images, ray_o, ray_d
     
     def sample(self, batch_size):
-        image_id = torch.tensor(np.random.randint(0, self.images.shape[0]))
+        image_id = torch.tensor(np.random.randint(0, self.split["train"]))
         transform_matrixs = self.transform_matrixs[image_id]#.expand([batch_size] + list(self.transform_matrixs[0].shape))
         image = self.images[image_id].reshape([-1, 3])
         

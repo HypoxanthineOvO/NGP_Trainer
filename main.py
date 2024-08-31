@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import json
+import os
 import math
 import cv2 as cv
 from tqdm import trange, tqdm
@@ -108,4 +109,7 @@ if __name__ == "__main__":
             psnr = compute_psnr(image, ref)
             tqdm.write(f"Step {step}, PSNR = {round(psnr.item(), 4)}")
         torch.cuda.empty_cache()
-    ngp.save_snapshot(path = f"./{scene_name}.msgpack", load_path = "./snapshots/lego.msgpack")
+    
+    os.makedirs("Results", exist_ok = True)
+    os.makedirs(f"Results/Hash{config['encoding']['log2_hashmap_size']}", exist_ok = True)
+    ngp.save_snapshot(path = f"./Results/Hash{config['encoding']['log2_hashmap_size']}/{scene_name}.msgpack", load_path = "./snapshots/lego.msgpack")

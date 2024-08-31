@@ -2,5 +2,9 @@ data/**
 __pycache__/
 .vscode/
 
-/*.msgpack
-/*.png
+*.msgpack
+*.png
+*kan*
+*Kan*
+*KAN*
+*Comb*

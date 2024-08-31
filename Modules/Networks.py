@@ -14,6 +14,9 @@ class MLP(Module):
             [torch.nn.Linear(self.n_neurons, self.n_neurons, bias = False) for i in range(self.n_hidden_layers - 1)] + 
             [torch.nn.Linear(self.n_neurons, self.n_output_dims, bias = False)]
         )
+    def initialize(self):
+        for layer in self.layers:
+            torch.nn.init.normal_(layer.weight, mean = 0., std = 0.1)
     def load_states(self, states: torch.Tensor):
         state_dict = {}
         for i, layer in enumerate(self.layers):
